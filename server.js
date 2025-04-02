@@ -9,7 +9,7 @@ const routes = require('./routes/route')
 const port =  process.env.PORT || 8000;
 
 const WebSocket = require('ws');
-const wss = new WebSocket.Server({ port: 8081 });
+const wss = new WebSocket.Server({ port: process.env.WS_PORT || 8081 });
 let rooms = {};
 
 

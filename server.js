@@ -104,4 +104,4 @@ wss.on('connection', (ws) => {
   });
 });
 
-console.log('WebSocket server running on ws://localhost:8081');
+console.log('WebSocket server running on wss://localhost:8081');

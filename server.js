@@ -15,7 +15,7 @@ let rooms = {};
 
 app.use(cors(
   {
-    origin: "https://xstreamfrontend.onrender.com", // restrict calls to those this address
+    origin: "http://xstreamfrontend.onrender.com", // restrict calls to those this address
     credentials: true,
   }
 )) // middleware present b/w client and server to change requests

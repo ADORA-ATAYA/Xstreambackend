@@ -1,107 +1,85 @@
-const express = require('express')
-const app = express()
-require("dotenv").config();
-const connectdb = require('./DBConnect')
-const cors = require('cors')
-// const bodyParser = require('body-parser')
-const routes = require('./routes/route')
-// const cloudinary = require('cloudinary');
-const port =  process.env.PORT || 8000;
-
+const express = require('express');
+const http = require('http');
 const WebSocket = require('ws');
-const wss = new WebSocket.Server({ port: process.env.WS_PORT || 8081 });
+const cors = require('cors');
+require("dotenv").config();
+
+const connectdb = require('./DBConnect');
+const routes = require('./routes/route');
+
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
+
+const port = process.env.PORT || 8000;
 let rooms = {};
 
+// CORS
+app.use(cors({
+  origin: "https://xstreamfrontend.onrender.com",
+  credentials: true,
+}));
 
-app.use(cors(
-  {
-    origin: "https://xstreamfrontend.onrender.com", // restrict calls to those this address
-    credentials: true,
-  }
-)) // middleware present b/w client and server to change requests
-app.use(express.json())
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+app.use(express.static('public'));
 
+// DB connect
+connectdb();
 
-// database connection
-connectdb()
+// Routes
+app.use('/', routes);
 
-// encoding url
-app.use(express.urlencoded({extended:false}))
-
-
-// router-Load (call routers)
-app.use('/',routes)
-
-
-// public folder static files setup
-app.use(express.static('public'))
-
-
-app.listen(port,()=>{
-  console.log(`server started at port:${port} ...`);
-})
-
-
-
-//websocket code
+// WebSocket logic
 wss.on('connection', (ws) => {
-  console.log('New WebSocket connection established');
+  console.log('WebSocket connected');
 
   ws.on('message', (message) => {
-      try {
-          const data = JSON.parse(message);
-          const { type, roomCode, videoState } = data;
+    try {
+      const data = JSON.parse(message);
+      const { type, roomCode, videoState } = data;
 
-          if (type === 'join') {
-              if (!rooms[roomCode]) {
-                  rooms[roomCode] = { users: [], videoState: {} };
-              }
-              rooms[roomCode].users.push(ws);
-              console.log(`User joined room: ${roomCode}`);
-
-              // Send the current video state to the new user
-              ws.send(JSON.stringify({ type: 'sync', videoState: rooms[roomCode].videoState }));
-          }
-
-          if (type === 'video-update') {
-              if (rooms[roomCode]) {
-                  rooms[roomCode].videoState = videoState; // Update the state
-                  rooms[roomCode].users.forEach(client => {
-                      if (client !== ws && client.readyState === WebSocket.OPEN) {
-                          client.send(JSON.stringify({ type: 'sync', videoState }));
-                      }
-                  });
-              }
-          }
-          if(type == "delete-room"){
-            if (rooms[roomCode]) {
-              // Close all WebSocket connections in this room
-              rooms[roomCode].users.forEach(client => {
-                  if (client.readyState === WebSocket.OPEN) {
-                      client.send(JSON.stringify({ type: 'room-deleted' })); // Notify users
-                      client.close(); // Close the WebSocket connection
-                  }
-              });
-  
-              // Delete room from the rooms object
-              delete rooms[roomCode];
-              console.log(`Room ${roomCode} deleted`);
-            }
-          }
-      } catch (error) {
-          console.error('Error processing message:', error);
+      if (type === 'join') {
+        if (!rooms[roomCode]) rooms[roomCode] = { users: [], videoState: {} };
+        rooms[roomCode].users.push(ws);
+        ws.send(JSON.stringify({ type: 'sync', videoState: rooms[roomCode].videoState }));
       }
+
+      if (type === 'video-update') {
+        if (rooms[roomCode]) {
+          rooms[roomCode].videoState = videoState;
+          rooms[roomCode].users.forEach(client => {
+            if (client !== ws && client.readyState === WebSocket.OPEN) {
+              client.send(JSON.stringify({ type: 'sync', videoState }));
+            }
+          });
+        }
+      }
+
+      if (type === 'delete-room' && rooms[roomCode]) {
+        rooms[roomCode].users.forEach(client => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({ type: 'room-deleted' }));
+            client.close();
+          }
+        });
+        delete rooms[roomCode];
+        console.log(`Room ${roomCode} deleted`);
+      }
+    } catch (error) {
+      console.error('WebSocket Error:', error);
+    }
   });
 
   ws.on('close', () => {
-      Object.keys(rooms).forEach(roomCode => {
-          rooms[roomCode].users = rooms[roomCode].users.filter(user => user !== ws);
-          if (rooms[roomCode].users.length === 0) {
-              delete rooms[roomCode]; // Clean up empty rooms
-          }
-      });
-      console.log('User disconnected');
+    Object.keys(rooms).forEach(roomCode => {
+      rooms[roomCode].users = rooms[roomCode].users.filter(user => user !== ws);
+      if (rooms[roomCode].users.length === 0) delete rooms[roomCode];
+    });
   });
 });
 
-console.log('WebSocket server running on wss://localhost:8081');
+// Start Express + WebSocket server
+server.listen(port, () => {
+  console.log(`Server (HTTP + WebSocket) is running on port ${port}`);
+});
